@@ -136,16 +136,36 @@ router.delete('/orders/:id', authenticateAdmin, async (req, res) => {
 
 router.get('/stats', authenticateAdmin, async (req, res) => {
     try {
-        const { data: total } = await supabase.from('orders').select('id', { count: 'exact', head: true });
-        const { data: pending } = await supabase.from('orders').select('id', { count: 'exact', head: true }).eq('status', 'pending');
-        const { data: revenue } = await supabase.from('orders').select('total_amount');
-        const total_revenue = revenue?.reduce((sum, o) => sum + (o.total_amount || 0), 0) || 0;
+        // Count total orders
+        const { count: totalOrders, error: totalError } = await supabase
+            .from('orders')
+            .select('*', { count: 'exact', head: true });
+
+        // Count pending orders
+        const { count: pendingOrders, error: pendingError } = await supabase
+            .from('orders')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'pending');
+
+        // Sum total revenue
+        const { data: revenueData, error: revenueError } = await supabase
+            .from('orders')
+            .select('total_amount');
+
+        if (totalError || pendingError || revenueError) {
+            console.error('Stats query error:', { totalError, pendingError, revenueError });
+            throw new Error('Failed to fetch stats');
+        }
+
+        const totalRevenue = revenueData?.reduce((sum, o) => sum + (o.total_amount || 0), 0) || 0;
+
         res.json({
-            total_orders: total?.count || 0,
-            pending_orders: pending?.count || 0,
-            total_revenue
+            total_orders: totalOrders || 0,
+            pending_orders: pendingOrders || 0,
+            total_revenue: totalRevenue
         });
     } catch (err) {
+        console.error('Stats error:', err);
         res.status(500).json({ error: err.message });
     }
 });
